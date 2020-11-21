@@ -8,7 +8,7 @@
 #ifndef S32K144_GPIO_GPIO_CONFIG_H_
 #define S32K144_GPIO_GPIO_CONFIG_H_
 
-#include "../s32k144_gpio/gpio_types.h"
+#include "gpio_types.h"
 
 typedef struct {
     gpio_pin_t pin;

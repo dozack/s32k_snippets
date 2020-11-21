@@ -8,7 +8,7 @@
 #ifndef S32K144_GPIO_GPIO_H_
 #define S32K144_GPIO_GPIO_H_
 
-#include "../s32k144_gpio/gpio_config.h"
+#include "gpio_config.h"
 
 #ifdef __cplusplus
 extern "C"

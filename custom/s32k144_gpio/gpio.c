@@ -5,7 +5,7 @@
  *      Author: zoltan
  */
 
-#include "../s32k144_gpio/gpio.h"
+#include "gpio.h"
 
 #include "S32K144.h"
 

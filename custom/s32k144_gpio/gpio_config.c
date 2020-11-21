@@ -5,7 +5,7 @@
  *      Author: zoltan
  */
 
-#include "../s32k144_gpio/gpio_config.h"
+#include "gpio_config.h"
 
 gpio_pin_config_t board_pins[2] = {
         {
