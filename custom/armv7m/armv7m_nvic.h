@@ -10,6 +10,8 @@
 
 #include "stdint.h"
 
+#define ARMV7M_NVIC_PRIO_BITS 4
+
 #ifdef __cplusplus
 extern "C"
 {

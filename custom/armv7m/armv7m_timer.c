@@ -1,0 +1,175 @@
+/*
+ * armv7m_timer.c
+ *
+ *  Created on: Nov 21, 2020
+ *      Author: zdole
+ */
+
+#include "stdlib.h"
+#include "stddef.h"
+
+#include "armv7m_timer.h"
+#include "armv7m_nvic.h"
+#include "armv7m_systick.h"
+#include "armv7m_atomic.h"
+#include "armv7m_pendsv.h"
+#include "armv7m_core.h"
+#include "armv7m_svcall.h"
+
+#include "S32K144.h"
+
+typedef struct _armv7m_timer_control_t {
+	struct _armv7m_timer_t *next;
+	struct _armv7m_timer_t *previous;
+	uint32_t millis;
+} armv7m_timer_control_t;
+
+static armv7m_timer_control_t armv7m_timer_control;
+
+static void armv7m_timer_insert(void *context, uint32_t data) {
+	armv7m_timer_t *timer, *element;
+	uint32_t remaining;
+
+	timer = (armv7m_timer_t*) context;
+
+	if (timer->next) {
+		timer->next->previous = timer->previous;
+		timer->previous->next = timer->next;
+
+		timer->next = NULL;
+		timer->previous = NULL;
+	}
+
+	remaining = data;
+	element = armv7m_timer_control.next;
+
+	while (element != (armv7m_timer_t*) &armv7m_timer_control) {
+		if (remaining < element->remaining) {
+			element->remaining -= remaining;
+			break;
+		}
+
+		remaining -= element->remaining;
+		element = element->next;
+	}
+
+	timer->previous = element->previous;
+	timer->next = element;
+
+	timer->previous->next = timer;
+	timer->next->previous = timer;
+
+	timer->remaining = remaining;
+}
+
+static void armv7m_timer_remove(void *context, uint32_t data) {
+	(void)data;
+	armv7m_timer_t *timer;
+
+	timer = (armv7m_timer_t*) context;
+
+	if (timer->next) {
+		timer->next->previous = timer->previous;
+		timer->previous->next = timer->next;
+
+		timer->next = NULL;
+		timer->previous = NULL;
+	}
+
+	armv7m_atomic_or((volatile uint32_t *) &timer->callback, 1);
+}
+
+void armv7m_timer_create(armv7m_timer_t *timer,
+		armv7m_timer_callback_t callback) {
+	timer->next = NULL;
+	timer->previous = NULL;
+	timer->callback = callback;
+	timer->remaining = 0;
+}
+
+bool armv7m_timer_start(armv7m_timer_t *timer, uint32_t timeout) {
+	IRQn_Type irq;
+	bool success = true;
+
+	irq = ((armv7m_core_get_ipsr() & 0x1ff) - 16);
+
+	if (irq >= SysTick_IRQn) {
+		success = (armv7m_pendsv_enqueue(
+				(armv7m_pendsv_routine_t) armv7m_timer_insert, (void*) timer,
+				timeout) != NULL);
+	} else if (irq >= SVCall_IRQn) {
+		armv7m_timer_insert((void*) timer, timeout);
+	} else {
+		armv7m_svcall_2((uint32_t) &armv7m_timer_insert, (uint32_t) timer,
+				timeout);
+	}
+
+	return success;
+}
+
+bool armv7m_timer_stop(armv7m_timer_t *timer) {
+	IRQn_Type irq;
+	bool success = true;
+
+	irq = ((armv7m_core_get_ipsr() & 0x1ff) - 16);
+
+	if (irq >= SysTick_IRQn) {
+		success = (armv7m_pendsv_enqueue(
+				(armv7m_pendsv_routine_t) armv7m_timer_remove, (void*) timer, 0)
+				!= NULL);
+
+		if (success) {
+			armv7m_atomic_and((volatile uint32_t *) &timer->callback, ~1);
+		}
+	} else if (irq >= SVCall_IRQn) {
+		armv7m_timer_remove((void*) timer, 0);
+	} else {
+		armv7m_svcall_2((uint32_t) &armv7m_timer_remove, (uint32_t) timer, 0);
+	}
+
+	return success;
+}
+
+static void armv7m_timer_callback(void *context, uint32_t data) {
+	(void) context;
+	armv7m_timer_t *timer;
+	armv7m_timer_callback_t callback;
+	uint32_t millis;
+
+	millis = data;
+
+	while (armv7m_timer_control.millis != millis) {
+		timer = armv7m_timer_control.next;
+
+		if (timer != (armv7m_timer_t*) &armv7m_timer_control) {
+			timer->remaining--;
+
+			while (timer != (armv7m_timer_t*) &armv7m_timer_control) {
+				if (timer->remaining) {
+					break;
+				}
+
+				callback = timer->callback;
+
+				armv7m_timer_remove(timer, 0);
+
+				if ((uint32_t) callback & 1) {
+					(*callback)(timer);
+				}
+
+				timer = armv7m_timer_control.next;
+			}
+		}
+
+		armv7m_timer_control.millis++;
+	}
+}
+
+void armv7m_timer_initialize(void) {
+	armv7m_timer_control.next = (armv7m_timer_t*) &armv7m_timer_control;
+	armv7m_timer_control.previous = (armv7m_timer_t*) &armv7m_timer_control;
+	armv7m_timer_control.millis = armv7m_systick_millis();
+
+	armv7m_systick_notify(armv7m_timer_callback, NULL);
+}
+
