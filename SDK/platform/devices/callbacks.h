@@ -150,13 +150,13 @@ typedef void (*i2s_callback_t)(i2s_event_t event, void *userData);
 typedef enum {
     CAN_EVENT_RX_COMPLETE,     /*!< A frame was received in the configured Rx buffer. */
     CAN_EVENT_TX_COMPLETE,     /*!< A frame was sent from the configured Tx buffer. */
-} s32k144_can_event_t;
+} can_event_t;
 
 /*! @brief Callback for all peripherals which support CAN features
  * Implements : can_callback_t_Class
  */
 typedef void (*can_callback_t)(uint32_t instance,
-                               s32k144_can_event_t eventType,
+                               can_event_t eventType,
                                uint32_t objIdx,
                                void *driverState);
 
